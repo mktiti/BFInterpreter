@@ -13,6 +13,7 @@ data Command = IncrementPtr |
     IfJump Int |
     JumpBack Int deriving (Show)
 
+type Code = Array Int Command
 type Memory = Array Int Word8
 
 data State = State { 
@@ -51,15 +52,15 @@ postExecute state = state { printReq = False, readReq = False, cmdPtr = (cmdPtr 
 
 main = do
     codeLine <- getLine
-    let code = parseCommands $  intersect codeLine "<>+-.,[]"
+    let code = parseCommands $ intersect codeLine "<>+-.,[]"
         end = length code
     run createState code end
 
-run :: State -> [Command] -> Int -> IO ()
+run :: State -> Code -> Int -> IO ()
 run state code cl
     | cmdPtr state == cl = return ()
     | otherwise = do
-        let state' = execute (code !! (cmdPtr state)) state
+        let state' = execute (code ! (cmdPtr state)) state
         if printReq state' then putChar (chr $ (fromIntegral (mem state ! memPtr state) :: Int)) else return ()
         state'' <- if readReq state' then do
             input <- getChar
@@ -78,8 +79,9 @@ simpleCommands = [('>', IncrementPtr),
 getSimpleCommand :: Char -> Maybe Command
 getSimpleCommand c = fmap snd $ find ((== c) . fst) simpleCommands
 
-parseCommands :: [Char] -> [Command]
-parseCommands s = reverse $ parse' s []
+parseCommands :: [Char] -> Code
+parseCommands s = listArray (0, length ls - 1) ls
+    where ls = reverse $ parse' s []
 
 parse' :: [Char] -> [Command] -> [Command]
 parse' [] cs = cs
