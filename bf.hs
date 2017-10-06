@@ -1,7 +1,8 @@
 import Data.Array
 import Data.Ix
 import Data.Char
-import Data.Int
+import Data.Word
+import Data.List
 
 data Command = IncrementPtr | 
     DecrementPtr |
@@ -12,22 +13,22 @@ data Command = IncrementPtr |
     IfJump Int |
     JumpBack Int deriving (Show)
 
-type Memory = Array Int Int8
+type Memory = Array Int Word8
 
 data State = State { 
-    code :: [Command],
     mem :: Memory, 
     memPtr :: Int, 
     cmdPtr :: Int, 
     printReq :: Bool, 
     readReq :: Bool } deriving (Show)
 
-createMemory :: Memory
-createMemory = array (0, 1000) [(i, 0) | i <- [0..1000]]
+memSize = 10000
 
-createState :: [Command] -> State
-createState code = State { 
-    code = code,
+createMemory :: Memory
+createMemory = array (0, memSize) [(i, 0) | i <- [0..memSize]]
+
+createState ::  State
+createState = State { 
     mem = createMemory, 
     memPtr = 0,
     cmdPtr = 0, 
@@ -50,22 +51,21 @@ postExecute state = state { printReq = False, readReq = False, cmdPtr = (cmdPtr 
 
 main = do
     codeLine <- getLine
-    let code = parseCommands codeLine
+    let code = parseCommands $  intersect codeLine "<>+-.,[]"
         end = length code
---    putStrLn $ show code
-    run (createState code) end
+    run createState code end
 
-run :: State -> Int -> IO ()
-run state cl
+run :: State -> [Command] -> Int -> IO ()
+run state code cl
     | cmdPtr state == cl = return ()
     | otherwise = do
-        let state' = execute ((code state) !! (cmdPtr state)) state
+        let state' = execute (code !! (cmdPtr state)) state
         if printReq state' then putChar (chr $ (fromIntegral (mem state ! memPtr state) :: Int)) else return ()
         state'' <- if readReq state' then do
             input <- getChar
-            return $ state' { mem = mem state' // [(memPtr state', (fromIntegral $ ord input) :: Int8)] }
+            return $ state' { mem = mem state' // [(memPtr state', (fromIntegral $ ord input) :: Word8)] }
         else return state'
-        run (postExecute state'') cl
+        run (postExecute state'') code cl
 
 simpleCommands :: [(Char, Command)]
 simpleCommands = [('>', IncrementPtr),
@@ -76,10 +76,7 @@ simpleCommands = [('>', IncrementPtr),
     (',', Store)]
 
 getSimpleCommand :: Char -> Maybe Command
-getSimpleCommand c = findCommand c simpleCommands
-    where
-        findCommand c [] = Nothing
-        findCommand c ((ch, comm):xs) = if c == ch then Just comm else findCommand c xs
+getSimpleCommand c = fmap snd $ find ((== c) . fst) simpleCommands
 
 parseCommands :: [Char] -> [Command]
 parseCommands s = reverse $ parse' s []
@@ -90,7 +87,7 @@ parse' (ch:chs) cs = case getSimpleCommand ch of
     Just c -> parse' chs (c:cs)
     Nothing -> case getJumping ch chs cs of
         Just c -> parse' chs (c:cs)
-        Nothing -> parse' chs cs
+        Nothing -> error "illegal jump ([])"
 
 getJumping :: Char -> [Char] -> [Command] -> Maybe Command
 getJumping '[' chs cs = fmap (\ptr -> IfJump $ length cs + ptr + 1) $ findClosing chs
