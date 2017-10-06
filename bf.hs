@@ -14,38 +14,48 @@ data Command = IncrementPtr |
     JumpBack Int deriving (Show)
 
 type Code = Array Int Command
-type Memory = Array Int Word8
+--type Memory = Array Int Word8
+data Memory = Memory { left :: [Word8], current :: Word8, right :: [Word8] }
+
+moveLeft :: Memory -> Memory
+moveLeft mem = Memory { 
+    left = tail $ left mem,
+    current = head $ left mem,
+    right = (current mem):(right mem) }
+
+moveRight :: Memory -> Memory
+moveRight mem = Memory { 
+    left = (current mem):(left mem),
+    current = head $ right mem,
+    right = tail $ right mem }
 
 data State = State { 
-    mem :: Memory, 
-    memPtr :: Int, 
+    mem :: Memory,  
     cmdPtr :: Int, 
     printReq :: Bool, 
-    readReq :: Bool } deriving (Show)
-
-memSize = 10000
+    readReq :: Bool }
 
 createMemory :: Memory
-createMemory = array (0, memSize) [(i, 0) | i <- [0..memSize]]
+createMemory = Memory [] 0 zeroes
+    where zeroes = 0:zeroes
 
 createState ::  State
 createState = State { 
     mem = createMemory, 
-    memPtr = 0,
     cmdPtr = 0, 
     printReq = False, 
     readReq = False
 }
 
 execute :: Command -> State -> State
-execute IncrementPtr state = state { memPtr = (memPtr state) + 1 }
-execute DecrementPtr state = state { memPtr = (memPtr state) - 1 }
-execute Increment s = s { mem = mem s // [(memPtr s, (mem s ! memPtr s) + 1)] }
-execute Decrement s = s { mem = mem s // [(memPtr s, (mem s ! memPtr s) - 1)] }
-execute Output state = state { printReq = True }
-execute Store state = state { readReq = True }
-execute (IfJump ptr) state = if mem state ! memPtr state == 0 then state { cmdPtr = ptr } else state
-execute (JumpBack ptr) state = state { cmdPtr = ptr - 1 }
+execute IncrementPtr s = s { mem = moveRight (mem s) }
+execute DecrementPtr s = s { mem = moveLeft (mem s) }
+execute Increment s = s { mem = (mem s) { current = current (mem s) + 1 } }
+execute Decrement s = s { mem = (mem s) { current = current (mem s) - 1 } }
+execute Output s = s { printReq = True }
+execute Store s = s { readReq = True }
+execute (IfJump ptr) s = if current (mem s) == 0 then s { cmdPtr = ptr } else s
+execute (JumpBack ptr) s = s { cmdPtr = ptr - 1 }
 
 postExecute :: State -> State
 postExecute state = state { printReq = False, readReq = False, cmdPtr = (cmdPtr state) + 1 }
@@ -61,10 +71,10 @@ run state code cl
     | cmdPtr state == cl = return ()
     | otherwise = do
         let state' = execute (code ! (cmdPtr state)) state
-        if printReq state' then putChar (chr $ (fromIntegral (mem state ! memPtr state) :: Int)) else return ()
+        if printReq state' then putChar (chr $ (fromIntegral (current $ mem state) :: Int)) else return ()
         state'' <- if readReq state' then do
             input <- getChar
-            return $ state' { mem = mem state' // [(memPtr state', (fromIntegral $ ord input) :: Word8)] }
+            return $ state' { mem = (mem state') { current = (fromIntegral $ ord input) :: Word8} }
         else return state'
         run (postExecute state'') code cl
 
